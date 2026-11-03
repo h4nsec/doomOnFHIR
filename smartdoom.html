@@ -1,0 +1,497 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SmartDoom</title>
+<!--
+  SmartDoom: a SMART on FHIR app that renders a FHIR R4 Questionnaire.
+  One item uses a custom SDC itemControl ("doom") whose initial valueAttachment
+  is the game data (WAD). The renderer mounts the real Doom engine
+  (doomgeneric -> WebAssembly, smartdoom-engine.js) for that item, and the
+  outcome items are filled from live game stats. Submitting writes a
+  QuestionnaireResponse back to the EHR's FHIR server.
+
+  Launch modes:
+    EHR launch:        smartdoom.html?launch=...&iss=...   (e.g. from launch.smarthealthit.org)
+    Standalone launch: smartdoom.html?iss=https://your-fhir-server/r4
+    Offline demo:      smartdoom.html                        (no server; response shown as JSON)
+  Optional: &questionnaire=Questionnaire/<id> loads the Questionnaire from the FHIR server
+  instead of the built-in one below.
+-->
+<script src="https://cdn.jsdelivr.net/npm/fhirclient@2.5.4/build/fhir-client.min.js"></script>
+<script src="smartdoom-engine.js"></script>
+<style>
+  :root {
+    --bg: #f4f5f7; --panel: #ffffff; --ink: #1d2330; --muted: #5d6677; --line: #d8dce3;
+    --accent: #1f5fbf; --ok: #1d7a46; --warn: #a33a1d;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #14171c; --panel: #1d2128; --ink: #e6e9ee; --muted: #9aa3b2; --line: #333a45;
+            --accent: #6ea3ff; --ok: #5cc98b; --warn: #ff8a66; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  header { background: var(--panel); border-bottom: 1px solid var(--line); padding: 10px 16px;
+           display: flex; gap: 16px; align-items: baseline; flex-wrap: wrap; }
+  header .app { font-weight: 700; }
+  header .patient { color: var(--muted); }
+  header .mode { margin-left: auto; font-size: 13px; color: var(--muted); }
+  main { max-width: 760px; margin: 0 auto; padding: 16px; }
+  h1 { font-size: 22px; margin: 8px 0 4px; }
+  .qdesc { color: var(--muted); margin: 0 0 16px; }
+  fieldset { border: 1px solid var(--line); background: var(--panel); border-radius: 8px;
+             padding: 12px 16px 16px; margin: 0 0 16px; }
+  legend { font-weight: 600; padding: 0 6px; }
+  .item { margin: 12px 0; }
+  .item > label.q { display: block; font-weight: 500; margin-bottom: 4px; }
+  .req::after { content: " *"; color: var(--warn); }
+  input[type=text], input[type=number], textarea { width: 100%; padding: 6px 8px; font: inherit;
+         color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; }
+  input[readonly] { opacity: .85; font-variant-numeric: tabular-nums; }
+  .choices label { display: block; font-weight: 400; }
+  .doom { background: #000; border-radius: 6px; overflow: hidden; position: relative; }
+  .doom canvas { display: block; width: 100%; aspect-ratio: 8 / 5; image-rendering: pixelated; outline: none; }
+  .doom .overlay { position: absolute; inset: 0; display: grid; place-items: center; color: #eee;
+                   background: rgba(0,0,0,.6); text-align: center; padding: 16px; }
+  .doom .overlay button { font-size: 18px; }
+  .hint { font-size: 13px; color: var(--muted); margin-top: 6px; }
+  button { font: inherit; padding: 8px 16px; border-radius: 6px; border: 1px solid var(--accent);
+           background: var(--accent); color: #fff; cursor: pointer; }
+  button.secondary { background: transparent; color: var(--accent); }
+  .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  .status { margin-top: 12px; }
+  .status.ok { color: var(--ok); } .status.err { color: var(--warn); }
+  pre { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px;
+        overflow: auto; max-height: 420px; font-size: 12px; }
+</style>
+</head>
+<body>
+<header>
+  <span class="app">SmartDoom</span>
+  <span class="patient" id="patient">No patient context</span>
+  <span class="mode" id="mode"></span>
+</header>
+<main>
+  <h1 id="qtitle"></h1>
+  <p class="qdesc" id="qdesc"></p>
+  <form id="form" novalidate></form>
+  <div class="actions">
+    <button type="button" id="submit">Submit QuestionnaireResponse</button>
+    <button type="button" id="download" class="secondary">Download JSON</button>
+  </div>
+  <div class="status" id="status"></div>
+  <pre id="output" hidden></pre>
+</main>
+
+<script>
+"use strict";
+
+// ---------------------------------------------------------------------------
+// The Questionnaire. Plain FHIR R4 + SDC; the only non-standard thing is the
+// itemControl code "doom" from our own CodeSystem, which a stock renderer
+// would simply ignore (and show an attachment upload instead).
+// ---------------------------------------------------------------------------
+const SD = "https://smartdoom.example/fhir";
+const QUESTIONNAIRE = {
+  resourceType: "Questionnaire",
+  id: "smartdoom",
+  url: SD + "/Questionnaire/smartdoom",
+  version: "1.0.0",
+  name: "SmartDoomCombatReadiness",
+  title: "Pre-Operative Combat Readiness Assessment",
+  status: "active",
+  subjectType: ["Patient"],
+  description: "Validated instrument for assessing demon-clearing capacity. Please complete all sections.",
+  item: [
+    {
+      linkId: "intake", type: "group", text: "Section 1: Patient-reported status",
+      item: [
+        { linkId: "intake.feeling", type: "choice", required: true, text: "How are you feeling today?",
+          answerOption: [
+            { valueCoding: { system: SD + "/CodeSystem/feeling", code: "rip-and-tear", display: "Ready to rip and tear" } },
+            { valueCoding: { system: SD + "/CodeSystem/feeling", code: "ok", display: "OK" } },
+            { valueCoding: { system: SD + "/CodeSystem/feeling", code: "hurt-me-plenty", display: "Hurt me plenty" } }
+          ] },
+        { linkId: "intake.demons", type: "boolean", text: "Have you been exposed to demons in the last 14 days?" }
+      ]
+    },
+    {
+      linkId: "doom", type: "attachment", text: "Section 2: Functional assessment (exit the level to complete)",
+      extension: [{
+        url: "http://hl7.org/fhir/StructureDefinition/questionnaire-itemControl",
+        valueCodeableConcept: { coding: [{ system: SD + "/CodeSystem/item-control", code: "doom", display: "Doom" }] }
+      }],
+      // The game data travels inside the Questionnaire. `url` keeps the resource small;
+      // replace it with `data: "<base64 WAD>"` to make the Questionnaire fully self-contained.
+      initial: [{ valueAttachment: { contentType: "application/x-doom-wad", url: "freedoom1.wad", title: "Freedoom Phase 1 (BSD licence)" } }]
+    },
+    {
+      linkId: "outcome", type: "group", text: "Section 3: Outcome measures (auto-populated)",
+      item: [
+        stat("outcome.map", "string", "Map", "map"),
+        stat("outcome.completed", "boolean", "Level completed", "completed"),
+        stat("outcome.kills", "integer", "Kills", "kills"),
+        stat("outcome.killsTotal", "integer", "Monsters on map", "totalKills"),
+        stat("outcome.items", "integer", "Items collected", "items"),
+        stat("outcome.secrets", "integer", "Secrets found", "secrets"),
+        stat("outcome.time", "integer", "Time on level (seconds)", "seconds"),
+        stat("outcome.health", "integer", "Health at last check (%)", "health")
+      ]
+    },
+    { linkId: "comments", type: "text", text: "Clinician comments" }
+  ]
+};
+function stat(linkId, type, text, code) {
+  return { linkId, type, text, readOnly: true,
+           extension: [{ url: SD + "/StructureDefinition/doom-stat", valueCode: code }] };
+}
+
+// ---------------------------------------------------------------------------
+// SMART launch
+// ---------------------------------------------------------------------------
+const $ = (id) => document.getElementById(id);
+const params = new URLSearchParams(location.search);
+let client = null, patient = null, questionnaire = QUESTIONNAIRE;
+
+async function boot() {
+  if (params.has("iss") && !params.has("code")) {
+    // Step 1 of the SMART launch: go to the authorization server. We come back with ?code=...
+    sessionStorage.setItem("smartdoom.questionnaire", params.get("questionnaire") || "");
+    return FHIR.oauth2.authorize({
+      clientId: "smartdoom",
+      scope: "launch launch/patient openid fhirUser patient/Patient.read patient/Questionnaire.read patient/QuestionnaireResponse.write",
+      redirectUri: location.pathname
+    });
+  }
+  if (params.has("code") || params.has("state")) {
+    client = await FHIR.oauth2.ready();
+    $("mode").textContent = "Connected: " + client.state.serverUrl;
+    if (client.patient.id) {
+      patient = await client.patient.read();
+      const n = (patient.name || [])[0] || {};
+      $("patient").textContent = [(n.given || []).join(" "), n.family].filter(Boolean).join(" ") +
+        " · " + (patient.gender || "") + " · DOB " + (patient.birthDate || "?");
+    }
+    const qref = sessionStorage.getItem("smartdoom.questionnaire");
+    if (qref) questionnaire = await client.request(qref);
+  } else {
+    $("mode").textContent = "Offline demo (no FHIR server)";
+  }
+  render(questionnaire);
+}
+
+// ---------------------------------------------------------------------------
+// Minimal Questionnaire renderer (group, display, string, text, integer,
+// boolean, choice, attachment, plus the custom "doom" itemControl).
+// ---------------------------------------------------------------------------
+const answers = new Map();      // linkId -> () => answer[] (or [])
+const statFields = new Map();   // stat code -> { set(value) }
+
+function itemControl(item) {
+  const ext = (item.extension || []).find(e => e.url.endsWith("/questionnaire-itemControl"));
+  return ext && ext.valueCodeableConcept.coding[0].code;
+}
+function statCode(item) {
+  const ext = (item.extension || []).find(e => e.url === SD + "/StructureDefinition/doom-stat");
+  return ext && ext.valueCode;
+}
+
+function render(q) {
+  $("qtitle").textContent = q.title || q.name || "Questionnaire";
+  $("qdesc").textContent = q.description || "";
+  const form = $("form");
+  form.innerHTML = "";
+  (q.item || []).forEach(it => form.appendChild(renderItem(it)));
+}
+
+function renderItem(item) {
+  if (item.type === "group") {
+    const fs = document.createElement("fieldset");
+    const lg = document.createElement("legend");
+    lg.textContent = item.text || "";
+    fs.appendChild(lg);
+    (item.item || []).forEach(child => fs.appendChild(renderItem(child)));
+    return fs;
+  }
+  if (item.type === "attachment" && itemControl(item) === "doom") {
+    // full-width panel, styled like a group so it reads as its own section
+    const fs = document.createElement("fieldset");
+    const lg = document.createElement("legend");
+    lg.textContent = item.text || "Doom";
+    fs.append(lg, mountDoom(item));
+    return fs;
+  }
+
+  const wrap = document.createElement("div");
+  wrap.className = "item";
+  if (item.type === "display") { wrap.textContent = item.text; return wrap; }
+
+  const id = "q-" + item.linkId.replace(/[^\w-]/g, "_");
+  const label = document.createElement("label");
+  label.className = "q" + (item.required ? " req" : "");
+  label.textContent = item.text || item.linkId;
+  label.htmlFor = id;
+  wrap.appendChild(label);
+
+  let input, get;
+  switch (item.type) {
+    case "string": case "text": case "integer": case "decimal": {
+      input = document.createElement(item.type === "text" ? "textarea" : "input");
+      if (item.type !== "text") input.type = (item.type === "string") ? "text" : "number";
+      if (item.type === "text") input.rows = 3;
+      const key = item.type === "integer" ? "valueInteger" : item.type === "decimal" ? "valueDecimal" : "valueString";
+      get = () => {
+        if (input.value === "") return [];
+        const v = key === "valueString" ? input.value : Number(input.value);
+        return [{ [key]: key === "valueInteger" ? Math.trunc(v) : v }];
+      };
+      break;
+    }
+    case "boolean": {
+      input = document.createElement("input");
+      input.type = "checkbox";
+      const touched = { v: false };
+      input.addEventListener("change", () => touched.v = true);
+      get = () => (touched.v || item.readOnly && input.dataset.set) ? [{ valueBoolean: input.checked }] : [];
+      break;
+    }
+    case "choice": {
+      input = document.createElement("div");
+      input.className = "choices";
+      (item.answerOption || []).forEach((opt, i) => {
+        const l = document.createElement("label");
+        const r = document.createElement("input");
+        r.type = "radio"; r.name = id; r.value = i;
+        l.appendChild(r);
+        l.append(" " + (opt.valueCoding ? opt.valueCoding.display || opt.valueCoding.code : opt.valueString));
+        input.appendChild(l);
+      });
+      get = () => {
+        const sel = input.querySelector("input:checked");
+        return sel ? [item.answerOption[sel.value]] : [];
+      };
+      break;
+    }
+    default: {
+      input = document.createElement("input");
+      input.type = "text";
+      input.disabled = true;
+      input.placeholder = "Unsupported item type: " + item.type;
+      get = () => [];
+    }
+  }
+  input.id = id;
+  if (item.readOnly) { input.readOnly = true; if (input.type === "checkbox") input.disabled = true; }
+  wrap.appendChild(input);
+  answers.set(item.linkId, get);
+
+  const code = statCode(item);
+  if (code) statFields.set(code, {
+    set(v) {
+      if (input.type === "checkbox") { input.checked = !!v; input.dataset.set = "1"; }
+      else input.value = v;
+    }
+  });
+  return wrap;
+}
+
+// ---------------------------------------------------------------------------
+// The Doom item control
+// ---------------------------------------------------------------------------
+const DOOM_KEYS = {
+  ArrowUp: 0xad, ArrowDown: 0xaf, ArrowLeft: 0xac, ArrowRight: 0xae,
+  KeyW: 0xad, KeyS: 0xaf, KeyA: 0xa0, KeyD: 0xa1, Comma: 0xa0, Period: 0xa1,
+  ControlLeft: 0xa3, ControlRight: 0xa3, Space: 0xa2, KeyE: 0xa2,
+  ShiftLeft: 0xb6, ShiftRight: 0xb6, AltLeft: 0xb8, AltRight: 0xb8,
+  Enter: 13, Escape: 27, Tab: 9, Backspace: 0x7f, Minus: 0x2d, Equal: 0x3d,
+  F1: 0xbb, F2: 0xbc, F3: 0xbd, F4: 0xbe, F5: 0xbf, F6: 0xc0, F7: 0xc1, F8: 0xc2, F9: 0xc3, F10: 0xc4, F11: 0xd7
+};
+const GS_LEVEL = 0, GS_INTERMISSION = 1;
+let doomAttachmentAnswer = null;  // set once the assessment has been attempted
+
+function mountDoom(item) {
+  const box = document.createElement("div");
+  const screen = document.createElement("div");
+  screen.className = "doom";
+  const canvas = document.createElement("canvas");
+  canvas.width = 640; canvas.height = 400; canvas.tabIndex = 0;
+  const overlay = document.createElement("div");
+  overlay.className = "overlay";
+  const start = document.createElement("button");
+  start.type = "button";
+  start.textContent = "Begin assessment";
+  overlay.appendChild(start);
+  screen.append(canvas, overlay);
+  const hint = document.createElement("div");
+  hint.className = "hint";
+  hint.textContent = "Arrows / WASD move · Ctrl or click fires · Space or E opens doors · Shift runs · 1–7 weapons · Esc menu";
+  box.append(screen, hint);
+
+  answers.set(item.linkId, () => doomAttachmentAnswer ? [doomAttachmentAnswer] : []);
+
+  start.addEventListener("click", async () => {
+    start.disabled = true;
+    try {
+      const att = (item.initial || [])[0].valueAttachment;
+      overlay.textContent = "Loading " + (att.title || "game data") + "…";
+      const wad = await loadAttachment(att, (pct) => overlay.textContent = "Loading game data… " + pct + "%");
+      overlay.textContent = "Starting engine…";
+      await startEngine(canvas, wad);
+      overlay.remove();
+      canvas.focus();
+    } catch (e) {
+      overlay.textContent = "Could not start: " + e.message;
+      console.error(e);
+    }
+  });
+  return box;
+}
+
+async function loadAttachment(att, onProgress) {
+  if (att.data) return Uint8Array.from(atob(att.data), c => c.charCodeAt(0));
+  const res = await fetch(new URL(att.url, location.href));
+  if (!res.ok) throw new Error("HTTP " + res.status + " fetching " + att.url);
+  const total = Number(res.headers.get("content-length")) || 0;
+  const reader = res.body.getReader();
+  const chunks = []; let got = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value); got += value.length;
+    if (total) onProgress(Math.round(100 * got / total));
+  }
+  const out = new Uint8Array(got); let off = 0;
+  for (const c of chunks) { out.set(c, off); off += c.length; }
+  return out;
+}
+
+async function startEngine(canvas, wad) {
+  const ctx = canvas.getContext("2d");
+  let img = null, mod = null;
+  mod = await SmartDoomEngine({
+    print: (t) => console.log("[doom]", t),
+    printErr: (t) => console.warn("[doom]", t),
+    onInit(w, h) { canvas.width = w; canvas.height = h; img = ctx.createImageData(w, h); },
+    blit(ptr, w, h) {
+      // DG_ScreenBuffer is XRGB8888 little-endian: bytes are B, G, R, X
+      const src = mod.HEAPU8, dst = img.data, n = w * h * 4;
+      for (let i = 0; i < n; i += 4) {
+        dst[i] = src[ptr + i + 2]; dst[i + 1] = src[ptr + i + 1]; dst[i + 2] = src[ptr + i]; dst[i + 3] = 255;
+      }
+      ctx.putImageData(img, 0, 0);
+    },
+    onGameState(gs) {
+      if (gs === GS_INTERMISSION) captureStats(mod, true);
+    }
+  });
+
+  mod.FS.writeFile("/freedoom1.wad", wad);
+  mod.callMain(["-iwad", "/freedoom1.wad"]);
+
+  const send = (down, code) => mod._smartdoom_key(down ? 1 : 0, code);
+  const toDoom = (e) => DOOM_KEYS[e.code] ?? (e.key.length === 1 ? e.key.toLowerCase().charCodeAt(0) : null);
+  canvas.addEventListener("keydown", (e) => {
+    const k = toDoom(e); if (k == null) return;
+    e.preventDefault(); if (!e.repeat) send(true, k);
+  });
+  canvas.addEventListener("keyup", (e) => {
+    const k = toDoom(e); if (k == null) return;
+    e.preventDefault(); send(false, k);
+  });
+  canvas.addEventListener("mousedown", (e) => { canvas.focus(); if (e.button === 0) send(true, 0xa3); });
+  canvas.addEventListener("mouseup", (e) => { if (e.button === 0) send(false, 0xa3); });
+  canvas.addEventListener("blur", () => [0xad, 0xaf, 0xac, 0xae, 0xa0, 0xa1, 0xa3, 0xb6].forEach(k => send(false, k)));
+
+  setInterval(() => captureStats(mod, false), 1000);
+}
+
+let completedSnapshot = null;
+function captureStats(mod, completed) {
+  const p = mod._smartdoom_stats() >> 2, H = mod.HEAP32;
+  const s = { episode: H[p], map: H[p + 1], kills: H[p + 2], totalKills: H[p + 3], items: H[p + 4],
+              totalItems: H[p + 5], secrets: H[p + 6], totalSecrets: H[p + 7], tics: H[p + 8],
+              health: H[p + 9], gamestate: H[p + 10] };
+  if (s.gamestate !== GS_LEVEL && !completed) return;   // ignore attract-mode demos & menus
+  if (!completed && completedSnapshot) return;          // keep the finished level's result
+  if (completed) completedSnapshot = s;
+  const fill = {
+    map: "E" + s.episode + "M" + s.map, completed, kills: s.kills, totalKills: s.totalKills,
+    items: s.items, secrets: s.secrets, seconds: Math.floor(s.tics / 35), health: s.health
+  };
+  for (const [code, v] of Object.entries(fill)) statFields.get(code)?.set(v);
+  doomAttachmentAnswer = { valueAttachment: { contentType: "application/json", title: "Doom session summary",
+    data: btoa(JSON.stringify(s)) } };
+}
+
+// ---------------------------------------------------------------------------
+// QuestionnaireResponse
+// ---------------------------------------------------------------------------
+function buildResponseItems(items) {
+  const out = [];
+  for (const it of items || []) {
+    if (it.type === "display") continue;
+    if (it.type === "group") {
+      const kids = buildResponseItems(it.item);
+      if (kids.length) out.push({ linkId: it.linkId, text: it.text, item: kids });
+      continue;
+    }
+    const a = (answers.get(it.linkId) || (() => []))();
+    if (a.length) out.push({ linkId: it.linkId, text: it.text, answer: a });
+  }
+  return out;
+}
+
+function missingRequired(items, acc = []) {
+  for (const it of items || []) {
+    if (it.type === "group") missingRequired(it.item, acc);
+    else if (it.required && !(answers.get(it.linkId) || (() => []))().length) acc.push(it.text || it.linkId);
+  }
+  return acc;
+}
+
+function buildResponse() {
+  const qr = {
+    resourceType: "QuestionnaireResponse",
+    questionnaire: questionnaire.url + (questionnaire.version ? "|" + questionnaire.version : ""),
+    status: completedSnapshot ? "completed" : "in-progress",
+    authored: new Date().toISOString(),
+    item: buildResponseItems(questionnaire.item)
+  };
+  if (patient) qr.subject = { reference: "Patient/" + patient.id };
+  if (client && client.user && client.user.fhirUser) qr.author = { reference: client.user.fhirUser };
+  return qr;
+}
+
+function setStatus(text, kind) { const s = $("status"); s.textContent = text; s.className = "status " + (kind || ""); }
+
+$("submit").addEventListener("click", async () => {
+  const missing = missingRequired(questionnaire.item);
+  if (missing.length) return setStatus("Please answer: " + missing.join(", "), "err");
+  const qr = buildResponse();
+  $("output").hidden = false;
+  $("output").textContent = JSON.stringify(qr, null, 2);
+  if (!client) return setStatus("Offline demo: here is the QuestionnaireResponse that would be saved.", "ok");
+  try {
+    setStatus("Saving to EHR…");
+    const saved = await client.create(qr);
+    setStatus("Saved as QuestionnaireResponse/" + saved.id + (qr.status === "in-progress" ? " (in progress: level not finished)" : ""), "ok");
+    $("output").textContent = JSON.stringify(saved, null, 2);
+  } catch (e) {
+    setStatus("Save failed: " + e.message, "err");
+  }
+});
+
+$("download").addEventListener("click", () => {
+  const blob = new Blob([JSON.stringify(buildResponse(), null, 2)], { type: "application/fhir+json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "smartdoom-questionnaireresponse.json";
+  a.click();
+});
+
+boot().catch(e => { setStatus("Launch failed: " + e.message, "err"); console.error(e); });
+</script>
+</body>
+</html>

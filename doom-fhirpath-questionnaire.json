@@ -1,0 +1,447 @@
+{
+  "resourceType": "Questionnaire",
+  "id": "doom-fhirpath",
+  "meta": {
+    "profile": [
+      "http://hl7.org/fhir/uv/sdc/StructureDefinition/sdc-questionnaire-adapt"
+    ]
+  },
+  "url": "https://smartdoom.example/fhir/Questionnaire/doom-fhirpath",
+  "version": "1.0.0",
+  "name": "DoomFhirpath",
+  "title": "Hangar Assessment (FHIRPath edition)",
+  "status": "active",
+  "subjectType": [
+    "Patient"
+  ],
+  "description": "A first-person shooter implemented entirely in FHIRPath. No JavaScript: the game state is replayed from your input with aggregate() and every frame is ray-marched by calculatedExpression. Works in any SDC renderer built on fhirpath.js >= 3.13 (e.g. NLM LHC-Forms, CSIRO Smart Forms).",
+  "extension": [
+    {
+      "url": "http://hl7.org/fhir/StructureDefinition/variable",
+      "valueExpression": {
+        "name": "map",
+        "language": "text/fhirpath",
+        "expression": "'#################......#.....I.##.####.#.###...##.#I...#...#.#.##.#.####.#.#.#.##...+....#...#.####.######.###.##......I.#.....##.######.#.###.##.#....#.#.#X#.##.#.##.#...#.#.##...#I.#####.#.####.#.##.....#.##+..#....###.I.##.#...##.......#################'"
+      }
+    },
+    {
+      "url": "http://hl7.org/fhir/StructureDefinition/variable",
+      "valueExpression": {
+        "name": "W",
+        "language": "text/fhirpath",
+        "expression": "16"
+      }
+    },
+    {
+      "url": "http://hl7.org/fhir/StructureDefinition/variable",
+      "valueExpression": {
+        "name": "PW",
+        "language": "text/fhirpath",
+        "expression": "96"
+      }
+    },
+    {
+      "url": "http://hl7.org/fhir/StructureDefinition/variable",
+      "valueExpression": {
+        "name": "PH",
+        "language": "text/fhirpath",
+        "expression": "64"
+      }
+    },
+    {
+      "url": "http://hl7.org/fhir/StructureDefinition/variable",
+      "valueExpression": {
+        "name": "HALF",
+        "language": "text/fhirpath",
+        "expression": "32"
+      }
+    },
+    {
+      "url": "http://hl7.org/fhir/StructureDefinition/variable",
+      "valueExpression": {
+        "name": "TSTEP",
+        "language": "text/fhirpath",
+        "expression": "0.1"
+      }
+    },
+    {
+      "url": "http://hl7.org/fhir/StructureDefinition/variable",
+      "valueExpression": {
+        "name": "TMAX",
+        "language": "text/fhirpath",
+        "expression": "12.0"
+      }
+    },
+    {
+      "url": "http://hl7.org/fhir/StructureDefinition/variable",
+      "valueExpression": {
+        "name": "range8",
+        "language": "text/fhirpath",
+        "expression": "'12345678'.toChars().select($this.toInteger())"
+      }
+    },
+    {
+      "url": "http://hl7.org/fhir/StructureDefinition/variable",
+      "valueExpression": {
+        "name": "rows16",
+        "language": "text/fhirpath",
+        "expression": "'xxxxxxxxxxxxxxxx'.toChars().select($index)"
+      }
+    },
+    {
+      "url": "http://hl7.org/fhir/StructureDefinition/variable",
+      "valueExpression": {
+        "name": "imps",
+        "language": "text/fhirpath",
+        "expression": "%map.toChars().select(iif($this = 'I', $index, {}))"
+      }
+    },
+    {
+      "url": "http://hl7.org/fhir/StructureDefinition/variable",
+      "valueExpression": {
+        "name": "tsteps",
+        "language": "text/fhirpath",
+        "expression": "'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'.toChars().select(($index + 1) * 0.1)"
+      }
+    },
+    {
+      "url": "http://hl7.org/fhir/StructureDefinition/variable",
+      "valueExpression": {
+        "name": "input",
+        "language": "text/fhirpath",
+        "expression": "%resource.repeat(item).where(linkId = 'input').answer.value.first().lower()"
+      }
+    },
+    {
+      "url": "http://hl7.org/fhir/StructureDefinition/variable",
+      "valueExpression": {
+        "name": "cmds",
+        "language": "text/fhirpath",
+        "expression": "iif(%input.exists(), %input.toChars().where('wasdf'.contains($this)), {})"
+      }
+    },
+    {
+      "url": "http://hl7.org/fhir/StructureDefinition/variable",
+      "valueExpression": {
+        "name": "state",
+        "language": "text/fhirpath",
+        "expression": "%cmds.aggregate(defineVariable('_c', $this) .defineVariable('_s', $total.split(',')) .defineVariable('_x', %_s[0].toInteger()) .defineVariable('_y', %_s[1].toInteger()) .defineVariable('_d', %_s[2].toInteger()) .defineVariable('_hp', %_s[3].toInteger()) .defineVariable('_k', %_s[4].toInteger()) .defineVariable('_st', %_s[5]) .defineVariable('_cl', %_s[6]) .defineVariable('_dx', iif(%_d = 1, 1, iif(%_d = 3, -1, 0))) .defineVariable('_dy', iif(%_d = 2, 1, iif(%_d = 0, -1, 0))) .defineVariable('_m', iif(%_c = 'w', 1, iif(%_c = 's', -1, 0))) .defineVariable('_ti', (%_y + %_dy * %_m) * %W + %_x + %_dx * %_m) .defineVariable('_tc', iif(%_cl.contains('|' & (%_ti).toString() & '|'), '.', %map.substring(%_ti, 1))) .defineVariable('_mv', %_m != 0 and %_tc != '#' and %_tc != 'I') .defineVariable('_nx', iif(%_mv, %_x + %_dx * %_m, %_x)) .defineVariable('_ny', iif(%_mv, %_y + %_dy * %_m, %_y)) .defineVariable('_nd', iif(%_c = 'a', (%_d + 3) mod 4, iif(%_c = 'd', (%_d + 1) mod 4, %_d))) .defineVariable('_hit', iif(%_c = 'f', %range8.select((%_y + %_dy * $this) * %W + %_x + %_dx * $this) .where(iif(%_cl.contains('|' & ($this).toString() & '|'), '.', %map.substring($this, 1)) != '.' and iif(%_cl.contains('|' & ($this).toString() & '|'), '.', %map.substring($this, 1)) != '+').first(), {})) .defineVariable('_kill', iif(%_hit.exists(), %map.substring(%_hit, 1) = 'I', false)) .defineVariable('_pick', %_mv and %_tc = '+') .defineVariable('_ncl', %_cl & iif(%_kill, %_hit.toString() & '|', '') & iif(%_pick, %_ti.toString() & '|', '')) .defineVariable('_hp1', iif(%_pick, iif(%_hp + 25 > 100, 100, %_hp + 25), %_hp)) .defineVariable('_near', %imps.where(%_ncl.contains('|' & $this.toString() & '|').not() and defineVariable('_ix', $this mod %W).defineVariable('_iy', $this div %W) .defineVariable('_sx', iif(%_ix > %_nx, 1, iif(%_ix < %_nx, -1, 0))) .defineVariable('_sy', iif(%_iy > %_ny, 1, iif(%_iy < %_ny, -1, 0))) .defineVariable('_dist', (%_ix - %_nx).abs() + (%_iy - %_ny).abs()) .select((%_ix = %_nx or %_iy = %_ny) and %_dist <= 4 and %range8.where($this < %_dist) .where(iif(%_ncl.contains('|' & ((%_ny + %_sy * $this) * %W + %_nx + %_sx * $this).toString() & '|'), '.', %map.substring((%_ny + %_sy * $this) * %W + %_nx + %_sx * $this, 1)) = '#').empty()) ).count()) .defineVariable('_hp2', %_hp1 - 8 * %_near) .defineVariable('_nst', iif(%_hp2 <= 0, 'dead', iif(%_mv and %_tc = 'X', 'won', 'play'))) .defineVariable('_msg', (iif(%_kill, 'IMP DOWN!', iif(%_c = 'f', '*BLAM* (missed)', iif(%_pick, 'Picked up a medikit (+25)', iif(%_m != 0 and %_mv.not(), 'Blocked.', '')))) & iif(%_near > 0, ' Imp fireball! -' & (8 * %_near).toString() & ' HP', '')).trim()) .select(iif(%_st != 'play', $total, %_nx.toString() & ',' & %_ny.toString() & ',' & %_nd.toString() & ',' & iif(%_hp2 < 0, 0, %_hp2).toString() & ',' & (%_k + iif(%_kill, 1, 0)).toString() & ',' & %_nst & ',' & %_ncl & ',' & %_msg)), '1,14,0,100,0,play,|,You wake up in a hangar. Something growls.').split(',')"
+      }
+    },
+    {
+      "url": "http://hl7.org/fhir/StructureDefinition/variable",
+      "valueExpression": {
+        "name": "px0",
+        "language": "text/fhirpath",
+        "expression": "%state[0].toInteger()"
+      }
+    },
+    {
+      "url": "http://hl7.org/fhir/StructureDefinition/variable",
+      "valueExpression": {
+        "name": "py0",
+        "language": "text/fhirpath",
+        "expression": "%state[1].toInteger()"
+      }
+    },
+    {
+      "url": "http://hl7.org/fhir/StructureDefinition/variable",
+      "valueExpression": {
+        "name": "dir",
+        "language": "text/fhirpath",
+        "expression": "%state[2].toInteger()"
+      }
+    },
+    {
+      "url": "http://hl7.org/fhir/StructureDefinition/variable",
+      "valueExpression": {
+        "name": "hp",
+        "language": "text/fhirpath",
+        "expression": "%state[3].toInteger()"
+      }
+    },
+    {
+      "url": "http://hl7.org/fhir/StructureDefinition/variable",
+      "valueExpression": {
+        "name": "kills",
+        "language": "text/fhirpath",
+        "expression": "%state[4].toInteger()"
+      }
+    },
+    {
+      "url": "http://hl7.org/fhir/StructureDefinition/variable",
+      "valueExpression": {
+        "name": "status",
+        "language": "text/fhirpath",
+        "expression": "%state[5]"
+      }
+    },
+    {
+      "url": "http://hl7.org/fhir/StructureDefinition/variable",
+      "valueExpression": {
+        "name": "cleared",
+        "language": "text/fhirpath",
+        "expression": "%state[6]"
+      }
+    },
+    {
+      "url": "http://hl7.org/fhir/StructureDefinition/variable",
+      "valueExpression": {
+        "name": "msg",
+        "language": "text/fhirpath",
+        "expression": "%state[7]"
+      }
+    },
+    {
+      "url": "http://hl7.org/fhir/StructureDefinition/variable",
+      "valueExpression": {
+        "name": "px",
+        "language": "text/fhirpath",
+        "expression": "%px0 + 0.5"
+      }
+    },
+    {
+      "url": "http://hl7.org/fhir/StructureDefinition/variable",
+      "valueExpression": {
+        "name": "py",
+        "language": "text/fhirpath",
+        "expression": "%py0 + 0.5"
+      }
+    },
+    {
+      "url": "http://hl7.org/fhir/StructureDefinition/variable",
+      "valueExpression": {
+        "name": "dx",
+        "language": "text/fhirpath",
+        "expression": "iif(%dir = 1, 1, iif(%dir = 3, -1, 0))"
+      }
+    },
+    {
+      "url": "http://hl7.org/fhir/StructureDefinition/variable",
+      "valueExpression": {
+        "name": "dy",
+        "language": "text/fhirpath",
+        "expression": "iif(%dir = 2, 1, iif(%dir = 0, -1, 0))"
+      }
+    },
+    {
+      "url": "http://hl7.org/fhir/StructureDefinition/variable",
+      "valueExpression": {
+        "name": "plx",
+        "language": "text/fhirpath",
+        "expression": "-0.66 * %dy"
+      }
+    },
+    {
+      "url": "http://hl7.org/fhir/StructureDefinition/variable",
+      "valueExpression": {
+        "name": "ply",
+        "language": "text/fhirpath",
+        "expression": "0.66 * %dx"
+      }
+    },
+    {
+      "url": "http://hl7.org/fhir/StructureDefinition/variable",
+      "valueExpression": {
+        "name": "zeros",
+        "language": "text/fhirpath",
+        "expression": "'0000000000000000000000000000000000000000000000000000000000000000'"
+      }
+    },
+    {
+      "url": "http://hl7.org/fhir/StructureDefinition/variable",
+      "valueExpression": {
+        "name": "dith",
+        "language": "text/fhirpath",
+        "expression": "'11111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111110111011101110111011101110111011101110111011101110111011101110111111011101110111011101110111011101110111011101110111011101110111011011101110111011101110111011101110111011101110111011101110111011011101110111011101110111011101110111011101110111011101110111011101010101010101010101010101010101010101010101010101010101010101001010101010101010101010101010101010101010101010101010101010101011010101010101010101010101010101010101010101010101010101010101010010101010101010101010101010101010101010101010101010101010101010110101010101010101010101010101010101010101010101010101010101010100000000000000000000000000000000000000000000000000000000000000000101010101010101010101010101010101010101010101010101010101010101000000000000000000000000000000000000000000000000000000000000000001010101010101010101010101010101010101010101010101010101010101010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000'"
+      }
+    },
+    {
+      "url": "http://hl7.org/fhir/StructureDefinition/variable",
+      "valueExpression": {
+        "name": "floorpat",
+        "language": "text/fhirpath",
+        "expression": "'00000000100000001000100010101010000000000000000100010001010101010000000000000010001000101010101000000000000001000100010001010101'"
+      }
+    },
+    {
+      "url": "http://hl7.org/fhir/StructureDefinition/variable",
+      "valueExpression": {
+        "name": "exitpat",
+        "language": "text/fhirpath",
+        "expression": "'1100110011001100110011001100110011001100110011001100110011001100'"
+      }
+    },
+    {
+      "url": "http://hl7.org/fhir/StructureDefinition/variable",
+      "valueExpression": {
+        "name": "imptex",
+        "language": "text/fhirpath",
+        "expression": "'1100000000000000111011111111110001111111111011100011100111010111001110011100011100111001110101110011110110000111001111110001011100111111000001110011110110010111001110011100011100111001110101110011100111000111011111111111111011101111111111001100000000000000'"
+      }
+    },
+    {
+      "url": "http://hl7.org/fhir/StructureDefinition/variable",
+      "valueExpression": {
+        "name": "braille",
+        "language": "text/fhirpath",
+        "expression": "'⠀⠁⠂⠃⠄⠅⠆⠇⠈⠉⠊⠋⠌⠍⠎⠏⠐⠑⠒⠓⠔⠕⠖⠗⠘⠙⠚⠛⠜⠝⠞⠟⠠⠡⠢⠣⠤⠥⠦⠧⠨⠩⠪⠫⠬⠭⠮⠯⠰⠱⠲⠳⠴⠵⠶⠷⠸⠹⠺⠻⠼⠽⠾⠿⡀⡁⡂⡃⡄⡅⡆⡇⡈⡉⡊⡋⡌⡍⡎⡏⡐⡑⡒⡓⡔⡕⡖⡗⡘⡙⡚⡛⡜⡝⡞⡟⡠⡡⡢⡣⡤⡥⡦⡧⡨⡩⡪⡫⡬⡭⡮⡯⡰⡱⡲⡳⡴⡵⡶⡷⡸⡹⡺⡻⡼⡽⡾⡿⢀⢁⢂⢃⢄⢅⢆⢇⢈⢉⢊⢋⢌⢍⢎⢏⢐⢑⢒⢓⢔⢕⢖⢗⢘⢙⢚⢛⢜⢝⢞⢟⢠⢡⢢⢣⢤⢥⢦⢧⢨⢩⢪⢫⢬⢭⢮⢯⢰⢱⢲⢳⢴⢵⢶⢷⢸⢹⢺⢻⢼⢽⢾⢿⣀⣁⣂⣃⣄⣅⣆⣇⣈⣉⣊⣋⣌⣍⣎⣏⣐⣑⣒⣓⣔⣕⣖⣗⣘⣙⣚⣛⣜⣝⣞⣟⣠⣡⣢⣣⣤⣥⣦⣧⣨⣩⣪⣫⣬⣭⣮⣯⣰⣱⣲⣳⣴⣵⣶⣷⣸⣹⣺⣻⣼⣽⣾⣿'"
+      }
+    },
+    {
+      "url": "http://hl7.org/fhir/StructureDefinition/variable",
+      "valueExpression": {
+        "name": "icons",
+        "language": "text/fhirpath",
+        "expression": "'⣿⣿⠀⠀⡱⢎⠺⠂⣏⣹'"
+      }
+    },
+    {
+      "url": "http://hl7.org/fhir/StructureDefinition/variable",
+      "valueExpression": {
+        "name": "arrows",
+        "language": "text/fhirpath",
+        "expression": "'⢺⡗⠶⡷⢼⡧⢾⠶'"
+      }
+    },
+    {
+      "url": "http://hl7.org/fhir/StructureDefinition/variable",
+      "valueExpression": {
+        "name": "crows",
+        "language": "text/fhirpath",
+        "expression": "'xxxxxxxxxxxxxxxx'.toChars().select($index)"
+      }
+    },
+    {
+      "url": "http://hl7.org/fhir/StructureDefinition/variable",
+      "valueExpression": {
+        "name": "ccols",
+        "language": "text/fhirpath",
+        "expression": "'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'.toChars().select($index)"
+      }
+    },
+    {
+      "url": "http://hl7.org/fhir/StructureDefinition/variable",
+      "valueExpression": {
+        "name": "pix",
+        "language": "text/fhirpath",
+        "expression": "'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'.toChars().select($index).select(defineVariable('xm', $this mod 4) .defineVariable('cam', 2.0 * $this / %PW - 1) .defineVariable('rx', %dx + %plx * %cam) .defineVariable('ry', %dy + %ply * %cam) .defineVariable('t', %tsteps.where(defineVariable('ci', (%py + %ry * $this).floor() * %W + (%px + %rx * $this).floor()).select(iif(%cleared.contains('|' & (%ci).toString() & '|'), '.', %map.substring(%ci, 1)) = '#' or iif(%cleared.contains('|' & (%ci).toString() & '|'), '.', %map.substring(%ci, 1)) = 'I' or iif(%cleared.contains('|' & (%ci).toString() & '|'), '.', %map.substring(%ci, 1)) = 'X')).first()) .defineVariable('tt', iif(%t.exists(), %t, %TMAX)) .defineVariable('hi', (%py + %ry * %tt).floor() * %W + (%px + %rx * %tt).floor()) .defineVariable('hc', iif(%t.exists(), %map.substring(%hi, 1), ' ')) .defineVariable('side', (%px + %rx * (%tt - %TSTEP)).floor() != (%px + %rx * %tt).floor()) .defineVariable('band', iif(%tt < 1.5, 0, iif(%tt < 3, 1, iif(%tt < 5, 2, 3))) + iif(%side, 1, 0)) .defineVariable('h', iif(%PH / %tt > %PH, %PH, (%PH / %tt).floor())) .defineVariable('top', ((%PH - %h) / 2).floor()) .defineVariable('u', iif(%side, %py + %ry * %tt, %px + %rx * %tt)) .defineVariable('ui', ((%u - %u.floor()) * 16).floor()) .defineVariable('wall', iif(%t.exists().not(), %zeros.substring(0, %h), iif(%hc = 'I', %zeros.substring(0, %h).toChars().select(%imptex.substring(%ui * 16 + ($index * 16 / %h).floor(), 1)).join(''), iif(%hc = 'X', %exitpat.substring(%top, %h), %dith.substring((%band * 4 + %xm) * %PH + %top, %h))))) .defineVariable('nf', %PH - %top - %h) .select(%zeros.substring(0, %top) & %wall & %floorpat.substring(%xm * %HALF + %HALF - %nf, %nf)))"
+      }
+    }
+  ],
+  "item": [
+    {
+      "linkId": "instructions",
+      "type": "display",
+      "text": "Type commands into the box below, one letter per action: W forward, S back, A turn left, D turn right, F fire. Kill the imps (horned faces), grab medikits (+ on the automap) and reach the exit (striped door, box on the automap). Imps hit you every turn while they can see you (same row or column, up to 4 squares). Delete letters to undo time."
+    },
+    {
+      "linkId": "screen",
+      "type": "text",
+      "readOnly": true,
+      "text": "View",
+      "extension": [
+        {
+          "url": "http://hl7.org/fhir/uv/sdc/StructureDefinition/sdc-questionnaire-calculatedExpression",
+          "valueExpression": {
+            "language": "text/fhirpath",
+            "expression": "iif(%status = 'dead', '\n\n\n\n\n\nY O U   A R E   D E A D\n\nDelete some letters from the command box to undo time.', iif(%status = 'won', '\n\n\n\n\n\nL E V E L   C O M P L E T E\n\nPlease submit this questionnaire to your physician.', %crows.select(defineVariable('o', $this * 4).select( %ccols.select(defineVariable('a', %pix[2 * $this]).defineVariable('b', %pix[2 * $this + 1]) .select(%braille.substring( %a.substring(%o + 0, 1).toInteger() + 2 * %a.substring(%o + 1, 1).toInteger() + 4 * %a.substring(%o + 2, 1).toInteger() + 64 * %a.substring(%o + 3, 1).toInteger() + 8 * %b.substring(%o + 0, 1).toInteger() + 16 * %b.substring(%o + 1, 1).toInteger() + 32 * %b.substring(%o + 2, 1).toInteger() + 128 * %b.substring(%o + 3, 1).toInteger(), 1)) ).join(''))).join('\\n')))"
+          }
+        }
+      ]
+    },
+    {
+      "linkId": "hud",
+      "type": "string",
+      "readOnly": true,
+      "text": "Status",
+      "extension": [
+        {
+          "url": "http://hl7.org/fhir/uv/sdc/StructureDefinition/sdc-questionnaire-calculatedExpression",
+          "valueExpression": {
+            "language": "text/fhirpath",
+            "expression": "'HEALTH ' & %hp.toString() & '%   KILLS ' & %kills.toString() & '/' & %imps.count().toString() & '   FACING ' & 'NESW'.substring(%dir, 1) & '   MOVES ' & %cmds.count().toString() & iif(%msg != '', '   ' & %msg, '')"
+          }
+        }
+      ]
+    },
+    {
+      "linkId": "input",
+      "type": "string",
+      "text": "Commands (W/A/S/D/F)",
+      "extension": [
+        {
+          "url": "http://hl7.org/fhir/StructureDefinition/entryFormat",
+          "valueString": "wwdwwf..."
+        }
+      ]
+    },
+    {
+      "linkId": "minimap",
+      "type": "text",
+      "readOnly": true,
+      "text": "Automap",
+      "extension": [
+        {
+          "url": "http://hl7.org/fhir/uv/sdc/StructureDefinition/sdc-questionnaire-calculatedExpression",
+          "valueExpression": {
+            "language": "text/fhirpath",
+            "expression": "%rows16.select(defineVariable('r', $this).select( %rows16.select(defineVariable('i', %r * %W + $this).select( iif(%i = %py0 * %W + %px0, %arrows.substring(%dir * 2, 2), %icons.substring('#.I+X'.indexOf(iif(%cleared.contains('|' & (%i).toString() & '|'), '.', %map.substring(%i, 1))) * 2, 2)) )).join(''))).join('\\n')"
+          }
+        }
+      ]
+    },
+    {
+      "linkId": "outcome",
+      "type": "group",
+      "text": "Clinical outcome (auto-populated)",
+      "item": [
+        {
+          "linkId": "outcome.health",
+          "type": "integer",
+          "readOnly": true,
+          "text": "Health (%)",
+          "extension": [
+            {
+              "url": "http://hl7.org/fhir/uv/sdc/StructureDefinition/sdc-questionnaire-calculatedExpression",
+              "valueExpression": {
+                "language": "text/fhirpath",
+                "expression": "%hp"
+              }
+            }
+          ]
+        },
+        {
+          "linkId": "outcome.kills",
+          "type": "integer",
+          "readOnly": true,
+          "text": "Imps neutralised",
+          "extension": [
+            {
+              "url": "http://hl7.org/fhir/uv/sdc/StructureDefinition/sdc-questionnaire-calculatedExpression",
+              "valueExpression": {
+                "language": "text/fhirpath",
+                "expression": "%kills"
+              }
+            }
+          ]
+        },
+        {
+          "linkId": "outcome.status",
+          "type": "string",
+          "readOnly": true,
+          "text": "Disposition",
+          "extension": [
+            {
+              "url": "http://hl7.org/fhir/uv/sdc/StructureDefinition/sdc-questionnaire-calculatedExpression",
+              "valueExpression": {
+                "language": "text/fhirpath",
+                "expression": "iif(%status = 'won', 'Discharged (level complete)', iif(%status = 'dead', 'Deceased', 'Still in the hangar'))"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
