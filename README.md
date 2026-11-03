@@ -2,44 +2,29 @@
 
 ![Doom on FHIR logo](./Doom%20on%20FHIR%20Logo.png)
 
-SmartDoom is a proof-of-concept SMART on FHIR application that embeds the classic Doom engine inside a FHIR Questionnaire. The app uses a custom SDC item control to render a playable Doom session as part of a clinical assessment workflow, with game outcome data written back as a QuestionnaireResponse.
+This repository contains two versions of the same concept:
 
-This repository combines:
+1. An attachment-based SMART app that runs Doom inside a FHIR Questionnaire in the browser.
+2. A pure FHIRPath version of the same Doom questionnaire that works in FHIRPath-capable SDC renderers without JavaScript.
 
-- a browser-based SMART app (`smartdoom.html`)
-- a Doom engine wrapper (`smartdoom-engine.js`)
-- a Freedoom WAD (`freedoom1.wad`)
-- a pure-FHIRPath questionnaire variant (`doom-fhirpath-questionnaire.json`)
-- build scripts for the native/WebAssembly engine path in `build/`
+Both versions are experiments in using FHIR Questionnaire mechanics as a vehicle for game-like clinical assessment logic.
 
-## What this project does
+## Repository contents
 
-The application demonstrates how a FHIR Questionnaire can host a game-like assessment item. A custom `doom` item control loads a WAD and mounts the Doom engine in-browser, while the Questionnaire captures gameplay data such as:
+- `smartdoom.html` — browser-based SMART app using an attachment item and a custom `doom` item control
+- `smartdoom-engine.js` — Doom engine bootstrap and runtime glue for the browser app
+- `freedoom1.wad` — Freedoom Phase 1 game data used by the attachment version
+- `doom-fhirpath-questionnaire.json` — the pure-FHIRPath version of the questionnaire
+- `build/` — build scripts and platform-layer sources for the engine
+- `FREEDOOM-COPYING.txt` — licensing details for the Freedoom assets
 
-- map progress
-- completion status
-- kills
-- items collected
-- secrets found
-- time spent
-- health at last check
+## Version 1: Attachment-based SMART app
 
-The result is a lightweight example of embedding a rich interactive experience into a standards-based FHIR workflow.
+The main app is `smartdoom.html`. It loads a standard FHIR Questionnaire with a custom item control named `doom` and an initial `valueAttachment` pointing at the Freedoom WAD. The browser mounts the actual Doom engine and updates QuestionnaireResponse data such as level status, kills, items, secrets, and time.
 
-## Repository layout
+### How to run the attachment version
 
-- `smartdoom.html` — main SMART app and embedded Questionnaire definition
-- `smartdoom-engine.js` — engine bootstrap and runtime glue for the Doom instance
-- `freedoom1.wad` — Freedoom Phase 1 game data
-- `doom-fhirpath-questionnaire.json` — alternate Questionnaire implemented in pure FHIRPath
-- `build/` — engine build scripts and platform layer sources
-- `FREEDOOM-COPYING.txt` — licensing information for Freedoom assets
-
-## Quick start
-
-### Offline demo
-
-From the repository root, serve the project with a static web server:
+From the repo root:
 
 ```bash
 python -m http.server 8000
@@ -51,28 +36,56 @@ Then open:
 http://localhost:8000/smartdoom.html
 ```
 
-This runs the app in offline mode and shows the QuestionnaireResponse JSON instead of submitting to a real EHR.
+This runs in offline/demo mode by default. The resulting QuestionnaireResponse is shown in JSON instead of being posted to a live FHIR server.
 
-### SMART launch
-
-The app supports a standard SMART launch flow:
+For SMART launch flows, use:
 
 - EHR launch: `smartdoom.html?launch=...&iss=...`
 - Standalone launch: `smartdoom.html?iss=https://your-fhir-server/r4`
-- Optional Questionnaire override: `&questionnaire=Questionnaire/<id>`
+- Optional questionnaire override: `&questionnaire=Questionnaire/<id>`
 
-## How it works
+This version is intended for a renderer or app that can understand the custom item control and handle attachment-based input data.
 
-The app loads a FHIR R4 Questionnaire resource with an attachment item that carries the WAD file. A custom item control (`doom`) tells the renderer to mount the real Doom engine for that item. While the player completes the level, the app updates the outcome items in the Questionnaire and can submit a QuestionnaireResponse back to the host FHIR server.
+## Version 2: Pure FHIRPath questionnaire
 
-This repo is primarily an experiment and reference implementation for integrating a game-like assessment into a SMART-on-FHIR workflow.
+The file `doom-fhirpath-questionnaire.json` is a different approach: it implements the Doom interaction entirely in FHIRPath expressions. There is no embedded JavaScript engine required in the host renderer. Instead, the questionnaire uses calculated expressions, variables, and repeat/aggregate logic to recreate the map, movement, ray-casting logic, and outcome values directly in FHIRPath.
+
+This variant is meant for SDC renderers that support FHIRPath and SDC features, such as:
+
+- NLM LHC-Forms
+- CSIRO Smart Forms
+- other FHIRPath-capable questionnaire renderers
+
+### How to use the FHIRPath version
+
+Load `doom-fhirpath-questionnaire.json` into a compatible FHIRPath-capable SDC renderer. It is not meant to be launched through `smartdoom.html`.
+
+If you want the browser demo experience, use the attachment version. If you want a standards-only, renderer-agnostic Questionnaire implementation, use the FHIRPath version.
+
+## Which version should I use?
+
+Use the attachment version when you want:
+
+- a playable browser-based Doom experience
+- the real engine running in the page
+- output captured as a QuestionnaireResponse from a SMART app
+
+Use the FHIRPath version when you want:
+
+- a pure data-driven Questionnaire
+- compatibility with FHIRPath-capable renderers
+- no JavaScript engine dependency in the host environment
+
+## How the project works
+
+The attachment-based app is a pragmatic demo of embedding a custom item control in a SMART Questionnaire. The FHIRPath-only version explores a more declarative approach: all the game logic lives in the Questionnaire as expressions, making it portable across SDC renderers.
 
 ## License and attribution
 
-- The project code and scripts in this repository are provided for demonstration and experimentation.
-- The game data (`freedoom1.wad`) is derived from Freedoom and retains the original Freedoom licensing terms.
-- See `FREEDOOM-COPYING.txt` for the full asset licensing details.
+- The code in this repository is provided for demonstration and experimentation.
+- `freedoom1.wad` is derived from Freedoom and remains subject to Freedoom licensing terms.
+- See `FREEDOOM-COPYING.txt` for the full asset licensing information.
 
 ## Notes
 
-This is a demo project intended for educational and experimental use. It may require a modern browser and a properly configured SMART-enabled FHIR environment for full EHR integration.
+This is a demo project intended for exploration, education, and experimental clinical workflow use. A full SMART EHR integration requires a properly configured FHIR server and a compatible renderer.
